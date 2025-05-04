@@ -10,7 +10,7 @@ export const MODULE_NAMES = {
 
 // Payment Splitter function names
 export const PAYMENT_SPLITTER_FUNCTIONS = {
-  INITIALIZE: 'initialize_registry',
+  INITIALIZE: 'initialize',
   CREATE_SPLITTER: 'create_splitter',
   PROCESS_PAYMENT: 'process_payment',
   UPDATE_RECIPIENTS: 'update_recipients',

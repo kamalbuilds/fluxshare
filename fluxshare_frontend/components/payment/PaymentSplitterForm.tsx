@@ -7,10 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Plus, Trash2, Users, DollarSign, AlertCircle, Database } from 'lucide-react';
+import { Plus, Trash2, Users, DollarSign, AlertCircle, Database, Loader2 } from 'lucide-react';
 import { usePaymentSplitter } from '@/hooks/usePaymentSplitter';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@iota/dapp-kit';
-import { createPaymentSplitterRegistryTransaction, getPaymentSplitterRegistry } from '@/lib/iota/client';
+import { createPaymentSplitterRegistryTransaction, getPaymentSplitterRegistry, createPaymentSplitterTransaction } from '@/lib/iota/client';
 import { useToast } from '@/hooks/use-toast';
 import { getIotaClient } from '@/lib/iota/client';
 
@@ -20,65 +20,30 @@ interface Recipient {
 }
 
 export const PaymentSplitterForm = () => {
-  const [splitterName, setSplitterName] = useState('');
+  const [name, setName] = useState('');
   const [recipients, setRecipients] = useState<Recipient[]>([
-    { address: '', share: 50 },
-    { address: '', share: 50 }
+    { address: '', share: 0 },
   ]);
-  const [registryId, setRegistryId] = useState<string | null>(null);
-  const [needsRegistry, setNeedsRegistry] = useState(false);
-  const [isCreatingRegistry, setIsCreatingRegistry] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isCheckingRegistry, setIsCheckingRegistry] = useState(true);
-  
-  const currentAccount = useCurrentAccount();
-  const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
-  const { createSplitter, processPayment, isLoading, error, isConnected } = usePaymentSplitter();
-  const { toast } = useToast();
+  const [registryId, setRegistryId] = useState<string | null>(null);
+  const [isCreatingRegistry, setIsCreatingRegistry] = useState(false);
 
-  // Check for existing registry on mount and account change
+  const currentAccount = useCurrentAccount();
+  const { toast } = useToast();
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+
+  // Check for existing payment splitter registry
   useEffect(() => {
-    const checkRegistryStatus = async () => {
-      if (isConnected && currentAccount) {
+    const checkRegistry = async () => {
+      if (currentAccount) {
         setIsCheckingRegistry(true);
-        
         try {
-          // First check blockchain for existing registry
-          const existingRegistryId = await getPaymentSplitterRegistry(currentAccount.address);
-          
-          if (existingRegistryId) {
-            setRegistryId(existingRegistryId);
-            setNeedsRegistry(false);
-            // Also update localStorage for future reference
-            localStorage.setItem(`payment-splitter-registry-${currentAccount.address}`, existingRegistryId);
-          } else {
-            // Check localStorage as backup
-            const storedRegistryId = localStorage.getItem(`payment-splitter-registry-${currentAccount.address}`);
-            if (storedRegistryId) {
-              // Verify the stored ID still exists on blockchain
-              try {
-                const client = getIotaClient();
-                await client.getObject({ id: storedRegistryId });
-                setRegistryId(storedRegistryId);
-                setNeedsRegistry(false);
-              } catch {
-                // Stored registry doesn't exist anymore, clear it
-                localStorage.removeItem(`payment-splitter-registry-${currentAccount.address}`);
-                setNeedsRegistry(true);
-              }
-            } else {
-              setNeedsRegistry(true);
-            }
-          }
+          const existingRegistry = await getPaymentSplitterRegistry(currentAccount.address);
+          setRegistryId(existingRegistry);
+          console.log('Payment splitter registry found:', existingRegistry);
         } catch (error) {
-          console.error('Error checking registry status:', error);
-          // Fall back to localStorage check
-          const storedRegistryId = localStorage.getItem(`payment-splitter-registry-${currentAccount.address}`);
-          if (storedRegistryId) {
-            setRegistryId(storedRegistryId);
-            setNeedsRegistry(false);
-          } else {
-            setNeedsRegistry(true);
-          }
+          console.error('Error checking registry:', error);
         } finally {
           setIsCheckingRegistry(false);
         }
@@ -87,8 +52,66 @@ export const PaymentSplitterForm = () => {
       }
     };
 
-    checkRegistryStatus();
-  }, [isConnected, currentAccount]);
+    checkRegistry();
+  }, [currentAccount]);
+
+  const createRegistry = async () => {
+    if (!currentAccount) {
+      toast({
+        title: 'Wallet Required',
+        description: 'Please connect your wallet to create a registry',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsCreatingRegistry(true);
+
+    try {
+      const transaction = createPaymentSplitterRegistryTransaction();
+
+      signAndExecuteTransaction(
+        { transaction },
+        {
+          onSuccess: async (result: any) => {
+            console.log('Registry creation transaction result:', result);
+            
+            // Extract registry ID from effects.created array
+            if (result.effects?.created && Array.isArray(result.effects.created)) {
+              const createdRegistry = result.effects.created.find((created: any) => 
+                created.reference?.objectId
+              );
+              
+              if (createdRegistry?.reference?.objectId) {
+                setRegistryId(createdRegistry.reference.objectId);
+                toast({
+                  title: "Success!",
+                  description: "Payment splitter registry created successfully",
+                });
+              }
+            }
+          },
+          onError: (error: any) => {
+            console.error('Registry creation failed:', error);
+            toast({
+              title: 'Creation Failed',
+              description: error.message || 'Failed to create payment splitter registry',
+              variant: 'destructive',
+            });
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Error creating registry:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create payment splitter registry',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCreatingRegistry(false);
+    }
+  };
 
   const addRecipient = () => {
     setRecipients([...recipients, { address: '', share: 0 }]);
@@ -106,71 +129,30 @@ export const PaymentSplitterForm = () => {
     setRecipients(updated);
   };
 
-  const getTotalShares = () => {
-    return recipients.reduce((total, recipient) => total + recipient.share, 0);
+  const validateForm = (): string | null => {
+    if (!name.trim()) return 'Plan name is required';
+    
+    if (recipients.length === 0) return 'At least one recipient is required';
+    
+    for (let i = 0; i < recipients.length; i++) {
+      const recipient = recipients[i];
+      if (!recipient.address.trim()) return `Recipient ${i + 1} address is required`;
+      if (recipient.share <= 0) return `Recipient ${i + 1} share must be greater than 0`;
+    }
+    
+    const totalShares = recipients.reduce((sum, r) => sum + r.share, 0);
+    if (totalShares !== 100) return `Total shares must equal 100% (currently ${totalShares}%)`;
+    
+    return null;
   };
 
-  const handleCreateRegistry = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
     if (!currentAccount) {
       toast({
-        title: 'Wallet Not Connected',
-        description: 'Please connect your wallet first',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsCreatingRegistry(true);
-
-    try {
-      const transaction = createPaymentSplitterRegistryTransaction();
-      
-      const result = await signAndExecuteTransaction({
-        transaction,
-      });
-
-      if (result) {
-        // Extract the registry ID from the transaction effects
-        const effects = result.effects;
-        if (effects && typeof effects === 'object' && 'created' in effects) {
-          const createdObjects = (effects as any).created;
-          if (createdObjects && createdObjects.length > 0) {
-            const registry = createdObjects.find((obj: any) => 
-              obj.reference?.objectId
-            );
-            if (registry) {
-              const newRegistryId = registry.reference.objectId;
-              setRegistryId(newRegistryId);
-              setNeedsRegistry(false);
-              
-              // Persist registry ID in localStorage
-              localStorage.setItem(`payment-splitter-registry-${currentAccount.address}`, newRegistryId);
-              
-              toast({
-                title: 'Success!',
-                description: 'Payment splitter registry created successfully',
-              });
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Registry creation error:', err);
-      toast({
-        title: 'Error',
-        description: 'Failed to create payment splitter registry',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsCreatingRegistry(false);
-    }
-  };
-
-  const handleCreateSplitter = async () => {
-    if (!isConnected) {
-      toast({
-        title: 'Wallet Not Connected',
-        description: 'Please connect your wallet first',
+        title: 'Wallet Required',
+        description: 'Please connect your wallet to create a payment splitter',
         variant: 'destructive',
       });
       return;
@@ -178,148 +160,129 @@ export const PaymentSplitterForm = () => {
 
     if (!registryId) {
       toast({
-        title: 'No Registry',
-        description: 'Please create a payment splitter registry first',
+        title: 'Registry Required',
+        description: 'Please initialize the payment splitter registry first',
         variant: 'destructive',
       });
       return;
     }
 
-    if (!splitterName.trim()) {
+    const validationError = validateForm();
+    if (validationError) {
       toast({
-        title: 'Missing Name',
-        description: 'Please enter a name for the payment splitter',
+        title: 'Validation Error',
+        description: validationError,
         variant: 'destructive',
       });
       return;
     }
 
-    if (recipients.some(r => !r.address.trim() || r.share <= 0)) {
-      toast({
-        title: 'Invalid Recipients',
-        description: 'All recipients must have valid addresses and positive shares',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (getTotalShares() !== 100) {
-      toast({
-        title: 'Invalid Shares',
-        description: 'Total shares must equal 100%',
-        variant: 'destructive',
-      });
-      return;
-    }
+    setIsLoading(true);
 
     try {
-      const result = await createSplitter({
-        name: splitterName,
-        recipient_addresses: recipients.map(r => r.address),
-        recipient_shares: recipients.map(r => r.share),
-      }, registryId);
+      const recipientAddresses = recipients.map(r => r.address);
+      const recipientShares = recipients.map(r => r.share);
 
-      if (result) {
-        toast({
-          title: 'Success!',
-          description: `Payment splitter "${splitterName}" created successfully`,
-        });
-        
-        // Reset form
-        setSplitterName('');
-        setRecipients([
-          { address: '', share: 50 },
-          { address: '', share: 50 }
-        ]);
-      }
-    } catch (err) {
+      const transaction = createPaymentSplitterTransaction(registryId, {
+        name,
+        recipient_addresses: recipientAddresses,
+        recipient_shares: recipientShares,
+      });
+
+      signAndExecuteTransaction(
+        { transaction },
+        {
+          onSuccess: (result: any) => {
+            console.log('Payment splitter creation successful:', result);
+            toast({
+              title: 'Success!',
+              description: `Payment splitter "${name}" created successfully`,
+            });
+            
+            // Reset form
+            setName('');
+            setRecipients([{ address: '', share: 0 }]);
+          },
+          onError: (error: any) => {
+            console.error('Payment splitter creation failed:', error);
+            toast({
+              title: 'Creation Failed',
+              description: error.message || 'Failed to create payment splitter',
+              variant: 'destructive',
+            });
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Error creating payment splitter:', error);
       toast({
         title: 'Error',
-        description: error || 'Failed to create payment splitter',
+        description: 'Failed to create payment splitter',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  if (!isConnected) {
+  if (!currentAccount) {
     return (
-      <Card className="w-full max-w-2xl mx-auto">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Create Payment Splitter
-          </CardTitle>
+          <CardTitle>Connect Wallet</CardTitle>
           <CardDescription>
-            Set up automatic payment distribution among multiple recipients
+            Please connect your IOTA wallet to create payment splitters
           </CardDescription>
         </CardHeader>
-        <CardContent className="text-center py-12">
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Please connect your IOTA wallet to create a payment splitter.
-            </AlertDescription>
-          </Alert>
-        </CardContent>
       </Card>
     );
   }
 
   if (isCheckingRegistry) {
     return (
-      <Card className="w-full max-w-2xl mx-auto">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Create Payment Splitter
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Checking Registry...
           </CardTitle>
           <CardDescription>
-            Set up automatic payment distribution among multiple recipients
+            Checking for existing payment splitter registry
           </CardDescription>
         </CardHeader>
-        <CardContent className="text-center py-12">
-          <div className="flex items-center justify-center gap-2">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            <span>Checking for existing registries...</span>
-          </div>
-        </CardContent>
       </Card>
     );
   }
 
-  if (needsRegistry) {
+  if (!registryId) {
     return (
-      <Card className="w-full max-w-2xl mx-auto">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" />
-            Initialize Payment Splitter Registry
-          </CardTitle>
+          <CardTitle>Initialize Payment Splitter Registry</CardTitle>
           <CardDescription>
             Create a registry to manage payment splitters on the IOTA blockchain
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Before creating payment splitters, you need to initialize a registry contract. 
-              This is a one-time setup that creates a shared object to manage all payment splitters.
+              Before creating payment splitters, you need to initialize a registry contract. This is a one-time setup that creates a shared object to manage all payment splitters.
             </AlertDescription>
           </Alert>
-
+          
           <Button 
-            onClick={handleCreateRegistry}
+            onClick={createRegistry}
             disabled={isCreatingRegistry}
             className="w-full"
           >
             {isCreatingRegistry ? (
-              'Creating Registry...'
-            ) : (
               <>
-                <Database className="h-4 w-4 mr-2" />
-                Create Payment Splitter Registry
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Creating Registry...
               </>
+            ) : (
+              'Initialize Payment Splitter Registry'
             )}
           </Button>
         </CardContent>
@@ -355,8 +318,8 @@ export const PaymentSplitterForm = () => {
           <Input
             id="splitter-name"
             placeholder="e.g., Team Revenue Split"
-            value={splitterName}
-            onChange={(e) => setSplitterName(e.target.value)}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             disabled={isLoading}
           />
         </div>
@@ -416,26 +379,28 @@ export const PaymentSplitterForm = () => {
 
         {/* Total Shares Display */}
         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-          <span className="text-sm font-medium">Total Shares:</span>
+          <span className="text-sm font-medium text-green-500">Total Shares:</span>
           <Badge 
-            variant={getTotalShares() === 100 ? "default" : "destructive"}
+            variant={recipients.reduce((total, recipient) => total + recipient.share, 0) === 100 ? "default" : "destructive"}
           >
-            {getTotalShares()}%
+            {recipients.reduce((total, recipient) => total + recipient.share, 0)}%
           </Badge>
         </div>
 
         {/* Error Display */}
-        {error && (
+        {isLoading && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>
+              {isLoading ? 'Creating payment splitter...' : 'Failed to create payment splitter'}
+            </AlertDescription>
           </Alert>
         )}
 
         {/* Create Button */}
         <Button 
-          onClick={handleCreateSplitter}
-          disabled={isLoading || !isConnected || getTotalShares() !== 100 || !registryId}
+          onClick={handleSubmit}
+          disabled={isLoading || !currentAccount || recipients.reduce((total, recipient) => total + recipient.share, 0) !== 100 || !registryId}
           className="w-full"
         >
           {isLoading ? (

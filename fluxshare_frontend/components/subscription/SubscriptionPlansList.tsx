@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useSubscriptionManager } from '@/hooks/useSubscriptionManager';
 import { useCurrentAccount } from '@iota/dapp-kit';
-import { formatIotaAmount } from '@/lib/iota/client';
+import { formatIotaAmount, hasActiveSubscription } from '@/lib/iota/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface SubscriptionPlan {
@@ -36,6 +36,7 @@ export const SubscriptionPlansList: React.FC<SubscriptionPlansListProps> = ({ re
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(false);
   const [subscribingPlanId, setSubscribingPlanId] = useState<number | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<{[key: number]: boolean}>({});
   
   const currentAccount = useCurrentAccount();
   const { subscribe, fetchSubscriptionPlans, isLoading, error, isConnected } = useSubscriptionManager();
@@ -48,6 +49,16 @@ export const SubscriptionPlansList: React.FC<SubscriptionPlansListProps> = ({ re
         try {
           const fetchedPlans = await fetchSubscriptionPlans(registryId);
           setPlans(fetchedPlans);
+          
+          // Check subscription status for each plan
+          if (currentAccount) {
+            const statusChecks: {[key: number]: boolean} = {};
+            for (const plan of fetchedPlans) {
+              const hasSubscription = await hasActiveSubscription(registryId, currentAccount.address, plan.id);
+              statusChecks[plan.id] = hasSubscription;
+            }
+            setSubscriptionStatus(statusChecks);
+          }
         } catch (err) {
           console.error('Error loading subscription plans:', err);
         } finally {
@@ -57,7 +68,7 @@ export const SubscriptionPlansList: React.FC<SubscriptionPlansListProps> = ({ re
     };
 
     loadPlans();
-  }, [registryId, isConnected, fetchSubscriptionPlans]);
+  }, [registryId, isConnected, currentAccount, fetchSubscriptionPlans]);
 
   const handleSubscribe = async (plan: SubscriptionPlan) => {
     if (!currentAccount || !registryId) {
@@ -78,6 +89,15 @@ export const SubscriptionPlansList: React.FC<SubscriptionPlansListProps> = ({ re
       return;
     }
 
+    if (subscriptionStatus[plan.id]) {
+      toast({
+        title: 'Already Subscribed',
+        description: 'You already have an active subscription to this plan',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSubscribingPlanId(plan.id);
 
     try {
@@ -88,6 +108,9 @@ export const SubscriptionPlansList: React.FC<SubscriptionPlansListProps> = ({ re
           title: 'Success!',
           description: `Successfully subscribed to "${plan.name}"`,
         });
+        
+        // Update subscription status
+        setSubscriptionStatus(prev => ({...prev, [plan.id]: true}));
       }
     } catch (err) {
       console.error('Subscription error:', err);
@@ -111,7 +134,21 @@ export const SubscriptionPlansList: React.FC<SubscriptionPlansListProps> = ({ re
   };
 
   const formatCreatedAt = (timestamp: string): string => {
-    return new Date(parseInt(timestamp)).toLocaleDateString();
+    const date = new Date(parseInt(timestamp));
+    return date.toLocaleDateString();
+  };
+
+  const getButtonState = (plan: SubscriptionPlan) => {
+    if (plan.creator === currentAccount?.address) {
+      return { text: 'Your Plan', variant: 'secondary' as const, disabled: true };
+    }
+    if (subscriptionStatus[plan.id]) {
+      return { text: 'Subscribed ✓', variant: 'secondary' as const, disabled: true };
+    }
+    if (subscribingPlanId === plan.id) {
+      return { text: 'Subscribing...', variant: 'default' as const, disabled: true };
+    }
+    return { text: 'Subscribe Now', variant: 'default' as const, disabled: isLoading };
   };
 
   if (!isConnected) {
@@ -210,24 +247,10 @@ export const SubscriptionPlansList: React.FC<SubscriptionPlansListProps> = ({ re
 
               <Button
                 onClick={() => handleSubscribe(plan)}
-                disabled={
-                  isLoading || 
-                  subscribingPlanId === plan.id || 
-                  plan.creator === currentAccount?.address
-                }
+                {...getButtonState(plan)}
                 className="w-full"
-                variant={plan.creator === currentAccount?.address ? "secondary" : "default"}
               >
-                {subscribingPlanId === plan.id ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Subscribing...
-                  </>
-                ) : plan.creator === currentAccount?.address ? (
-                  'Your Plan'
-                ) : (
-                  'Subscribe Now'
-                )}
+                {getButtonState(plan).text}
               </Button>
             </CardContent>
           </Card>

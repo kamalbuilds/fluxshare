@@ -24,7 +24,7 @@ export const useWalletBalance = () => {
   const totalBalance = useMemo(() => {
     if (!coins?.data) return BigInt(0);
     
-    return coins.data.reduce((total, coin) => {
+    return coins.data.reduce((total: bigint, coin: any) => {
       return total + BigInt(coin.balance || '0');
     }, BigInt(0));
   }, [coins?.data]);

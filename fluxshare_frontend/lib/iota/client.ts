@@ -498,7 +498,7 @@ export const getSubscriptionPlans = async (registryId: string): Promise<any[]> =
               price: planData.fields.price || '0',
               period: parseInt(planData.fields.period_in_seconds || '0'),
               creator: planData.fields.owner || '',
-              created_at: planData.fields.created_at || Date.now().toString(),
+              created_at: (parseInt(planData.fields.created_at || '0') * 1000).toString(), // Convert seconds to milliseconds
               active: planData.fields.active || false,
             };
             
@@ -517,6 +517,45 @@ export const getSubscriptionPlans = async (registryId: string): Promise<any[]> =
   } catch (error) {
     console.error('Error fetching subscription plans:', error);
     return [];
+  }
+};
+
+// Check if user has an active subscription to a specific plan
+export const hasActiveSubscription = async (registryId: string, userAddress: string, planId: number): Promise<boolean> => {
+  const client = getIotaClient();
+  
+  try {
+    console.log('Checking subscription status for user:', userAddress, 'plan:', planId);
+    
+    const registryObject = await client.getObject({
+      id: registryId,
+      options: {
+        showContent: true,
+        showType: true,
+      }
+    });
+
+    if (registryObject.data?.content && 'fields' in registryObject.data.content) {
+      const fields = registryObject.data.content.fields as any;
+      
+      if (fields.subscriptions && Array.isArray(fields.subscriptions)) {
+        for (const subscription of fields.subscriptions) {
+          if (subscription.fields && 
+              subscription.fields.subscriber === userAddress &&
+              parseInt(subscription.fields.plan_id) === planId &&
+              subscription.fields.active === true) {
+            console.log('Found active subscription:', subscription.fields);
+            return true;
+          }
+        }
+      }
+    }
+    
+    console.log('No active subscription found for user:', userAddress, 'plan:', planId);
+    return false;
+  } catch (error) {
+    console.error('Error checking subscription status:', error);
+    return false;
   }
 };
 
