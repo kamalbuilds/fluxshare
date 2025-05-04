@@ -167,61 +167,6 @@ export const cancelSubscriptionTransaction = (
 };
 
 // Query Functions - Fixed to use proper shared object queries
-export const getPaymentSplitterRegistry = async (): Promise<any> => {
-  const client = getIotaClient();
-  
-  try {
-    // Query for all objects of the PaymentSplitterRegistry type
-    const objects = await client.multiGetObjects({
-      ids: [], // We'll use getDynamicFields instead
-      options: {
-        showContent: true,
-        showType: true,
-      }
-    });
-    
-    // Alternative approach: Query events to find registry creation
-    const events = await client.queryEvents({
-      query: {
-        MoveEventModule: {
-          package: PACKAGE_ID,
-          module: MODULE_NAMES.PAYMENT_SPLITTER,
-        }
-      },
-      limit: 1,
-    });
-    
-    // For now, we'll use a known registry ID or create one
-    // In a real app, you'd track the registry ID from deployment
-    return null; // Will be handled in the hooks
-  } catch (error) {
-    console.error('Error fetching payment splitter registry:', error);
-    throw error;
-  }
-};
-
-export const getSubscriptionRegistry = async (): Promise<any> => {
-  const client = getIotaClient();
-  
-  try {
-    // Similar approach for subscription registry
-    const events = await client.queryEvents({
-      query: {
-        MoveEventModule: {
-          package: PACKAGE_ID,
-          module: MODULE_NAMES.SUBSCRIPTION_MANAGER,
-        }
-      },
-      limit: 1,
-    });
-    
-    return null; // Will be handled in the hooks
-  } catch (error) {
-    console.error('Error fetching subscription registry:', error);
-    throw error;
-  }
-};
-
 export const getUserOwnedCoins = async (address: string): Promise<any[]> => {
   const client = getIotaClient();
   
@@ -341,5 +286,284 @@ export const getEventsByType = async (eventType: string): Promise<any[]> => {
   } catch (error) {
     console.error('Error fetching events:', error);
     throw error;
+  }
+};
+
+// Query functions for checking existing registries
+export async function getPaymentSplitterRegistry(ownerAddress: string): Promise<string | null> {
+  try {
+    const client = new IotaClient({ url: getFullnodeUrl('devnet') });
+    
+    console.log('Checking for payment splitter registry for address:', ownerAddress);
+    
+    // First, try to find registry by checking transaction history
+    const transactions = await client.queryTransactionBlocks({
+      filter: {
+        FromAddress: ownerAddress,
+      },
+      options: {
+        showInput: true,
+        showEffects: true,
+        showEvents: true,
+        showObjectChanges: true,
+      },
+      limit: 50,
+    });
+
+    console.log('Found', transactions.data?.length || 0, 'transactions');
+    
+    // Look for registry creation in transaction effects
+    for (const txn of transactions.data || []) {
+      if (txn.objectChanges) {
+        for (const change of txn.objectChanges) {
+          if (change.type === 'created' && 
+              change.objectType && 
+              change.objectType.includes('PaymentSplitterRegistry')) {
+            console.log('Found payment splitter registry in transaction:', change.objectId);
+            return change.objectId;
+          }
+        }
+      }
+    }
+
+    // If not found in transaction history, try checking owned objects as fallback
+    const objects = await client.getOwnedObjects({
+      owner: ownerAddress,
+      options: {
+        showContent: true,
+        showType: true,
+        showOwner: true,
+      }
+    });
+
+    console.log('Found', objects.data?.length || 0, 'owned objects');
+    
+    if (objects.data) {
+      for (const object of objects.data) {
+        console.log('Object type:', object.data?.type);
+        if (object.data?.type && object.data.type.includes('PaymentSplitterRegistry')) {
+          console.log('Found payment splitter registry:', object.data.objectId);
+          return object.data.objectId;
+        }
+      }
+    }
+    
+    console.log('No payment splitter registry found');
+    return null;
+  } catch (error) {
+    console.error('Error querying payment splitter registry:', error);
+    return null;
+  }
+}
+
+export async function getSubscriptionRegistry(ownerAddress: string): Promise<string | null> {
+  try {
+    const client = new IotaClient({ url: getFullnodeUrl('devnet') });
+    
+    console.log('Checking for subscription registry for address:', ownerAddress);
+    
+    // First, try to find registry by checking transaction history
+    const transactions = await client.queryTransactionBlocks({
+      filter: {
+        FromAddress: ownerAddress,
+      },
+      options: {
+        showInput: true,
+        showEffects: true,
+        showEvents: true,
+        showObjectChanges: true,
+      },
+      limit: 50,
+    });
+
+    console.log('Found', transactions.data?.length || 0, 'transactions');
+    
+    // Look for registry creation in transaction effects
+    for (const txn of transactions.data || []) {
+      if (txn.objectChanges) {
+        for (const change of txn.objectChanges) {
+          if (change.type === 'created' && 
+              change.objectType && 
+              change.objectType.includes('SubscriptionRegistry')) {
+            console.log('Found subscription registry in transaction:', change.objectId);
+            return change.objectId;
+          }
+        }
+      }
+    }
+
+    // If not found in transaction history, try checking owned objects as fallback
+    const objects = await client.getOwnedObjects({
+      owner: ownerAddress,
+      options: {
+        showContent: true,
+        showType: true,
+        showOwner: true,
+      }
+    });
+
+    console.log('Found', objects.data?.length || 0, 'owned objects');
+    
+    if (objects.data) {
+      for (const object of objects.data) {
+        console.log('Object type:', object.data?.type);
+        if (object.data?.type && object.data.type.includes('SubscriptionRegistry')) {
+          console.log('Found subscription registry:', object.data.objectId);
+          return object.data.objectId;
+        }
+      }
+    }
+    
+    console.log('No subscription registry found');
+    return null;
+  } catch (error) {
+    console.error('Error querying subscription registry:', error);
+    return null;
+  }
+}
+
+// Alternative approach: Query all owned objects and filter by type
+export async function getUserRegistries(ownerAddress: string): Promise<{
+  paymentSplitterRegistry?: string;
+  subscriptionRegistry?: string;
+}> {
+  try {
+    const client = new IotaClient({ url: getFullnodeUrl('devnet') });
+    
+    const objects = await client.getOwnedObjects({
+      owner: ownerAddress,
+      options: {
+        showContent: true,
+        showType: true,
+      }
+    });
+
+    const registries: {
+      paymentSplitterRegistry?: string;
+      subscriptionRegistry?: string;
+    } = {};
+
+    if (objects.data) {
+      for (const object of objects.data) {
+        if (object.data?.type) {
+          if (object.data.type.includes('PaymentSplitterRegistry')) {
+            registries.paymentSplitterRegistry = object.data.objectId;
+          } else if (object.data.type.includes('SubscriptionRegistry')) {
+            registries.subscriptionRegistry = object.data.objectId;
+          }
+        }
+      }
+    }
+
+    return registries;
+  } catch (error) {
+    console.error('Error querying user registries:', error);
+    return {};
+  }
+}
+
+// Query subscription plans from blockchain
+export const getSubscriptionPlans = async (registryId: string): Promise<any[]> => {
+  const client = getIotaClient();
+  
+  try {
+    console.log('Fetching subscription plans from registry:', registryId);
+    
+    // Get the registry object to read its state
+    const registryObject = await client.getObject({
+      id: registryId,
+      options: {
+        showContent: true,
+        showType: true,
+      }
+    });
+
+    console.log('Registry object:', registryObject);
+
+    const plans: any[] = [];
+
+    // Parse plans directly from registry object content
+    if (registryObject.data?.content && 'fields' in registryObject.data.content) {
+      const fields = registryObject.data.content.fields as any;
+      
+      if (fields.plans && Array.isArray(fields.plans)) {
+        console.log('Found', fields.plans.length, 'plans in registry');
+        
+        for (const planData of fields.plans) {
+          if (planData.fields) {
+            const plan = {
+              id: parseInt(planData.fields.plan_id || '0'),
+              name: planData.fields.name || 'Unnamed Plan',
+              description: planData.fields.description || 'No description',
+              price: planData.fields.price || '0',
+              period: parseInt(planData.fields.period_in_seconds || '0'),
+              creator: planData.fields.owner || '',
+              created_at: planData.fields.created_at || Date.now().toString(),
+              active: planData.fields.active || false,
+            };
+            
+            // Only include active plans
+            if (plan.active) {
+              plans.push(plan);
+              console.log('Added plan:', plan);
+            }
+          }
+        }
+      }
+    }
+
+    console.log('Parsed subscription plans:', plans);
+    return plans;
+  } catch (error) {
+    console.error('Error fetching subscription plans:', error);
+    return [];
+  }
+};
+
+// Get subscription plans for a specific creator
+export const getUserSubscriptionPlans = async (creatorAddress: string): Promise<any[]> => {
+  const client = getIotaClient();
+  
+  try {
+    console.log('Fetching subscription plans for creator:', creatorAddress);
+    
+    // Query events for plans created by this user
+    const events = await client.queryEvents({
+      query: {
+        MoveEventModule: {
+          package: PACKAGE_ID,
+          module: MODULE_NAMES.SUBSCRIPTION_MANAGER,
+        }
+      },
+      limit: 100,
+    });
+
+    const plans: any[] = [];
+    
+    if (events.data) {
+      for (const event of events.data) {
+        if (event.type && event.type.includes('PlanCreated') && event.parsedJson) {
+          const planData = event.parsedJson as any;
+          
+          // Filter by creator address
+          if (planData.creator === creatorAddress) {
+            plans.push({
+              id: planData.plan_id || planData.id,
+              name: planData.name,
+              description: planData.description,
+              price: planData.price,
+              period: planData.period_in_seconds,
+              creator: planData.creator,
+              created_at: event.timestampMs,
+            });
+          }
+        }
+      }
+    }
+
+    return plans;
+  } catch (error) {
+    console.error('Error fetching user subscription plans:', error);
+    return [];
   }
 }; 

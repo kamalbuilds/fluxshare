@@ -7,8 +7,9 @@ import {
   subscribeTransaction,
   renewSubscriptionTransaction,
   cancelSubscriptionTransaction,
-  getSubscriptionRegistry,
-  getUserOwnedCoins 
+  getUserOwnedCoins,
+  getSubscriptionPlans,
+  getUserSubscriptionPlans
 } from '@/lib/iota/client';
 import type { 
   CreateSubscriptionPlanParams,
@@ -22,22 +23,23 @@ export const useSubscriptionManager = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createPlan = useCallback(async (params: CreateSubscriptionPlanParams): Promise<TransactionResult | null> => {
+  const createPlan = useCallback(async (
+    params: CreateSubscriptionPlanParams,
+    registryId: string
+  ): Promise<TransactionResult | null> => {
     if (!currentAccount) {
       throw new Error('Wallet not connected');
+    }
+
+    if (!registryId) {
+      throw new Error('Registry ID is required');
     }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // Get the registry to pass as parameter
-      const registry = await getSubscriptionRegistry();
-      if (!registry) {
-        throw new Error('Subscription registry not found');
-      }
-
-      const transaction = createSubscriptionPlanTransaction(registry.data.objectId, params);
+      const transaction = createSubscriptionPlanTransaction(registryId, params);
       
       const result = await signAndExecuteTransaction({
         transaction,
@@ -56,21 +58,23 @@ export const useSubscriptionManager = () => {
     }
   }, [currentAccount, signAndExecuteTransaction]);
 
-  const subscribe = useCallback(async (planId: number, paymentAmount: string): Promise<TransactionResult | null> => {
+  const subscribe = useCallback(async (
+    registryId: string,
+    planId: number, 
+    paymentAmount: string
+  ): Promise<TransactionResult | null> => {
     if (!currentAccount) {
       throw new Error('Wallet not connected');
+    }
+
+    if (!registryId) {
+      throw new Error('Registry ID is required');
     }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // Get the registry
-      const registry = await getSubscriptionRegistry();
-      if (!registry) {
-        throw new Error('Subscription registry not found');
-      }
-
       // Get user's coins to use for subscription payment
       const coins = await getUserOwnedCoins(currentAccount.address);
       if (coins.length === 0) {
@@ -81,7 +85,7 @@ export const useSubscriptionManager = () => {
       const coinId = coins[0].coinObjectId;
       
       const transaction = subscribeTransaction(
-        registry.data.objectId,
+        registryId,
         { plan_id: planId, payment_amount: paymentAmount },
         coinId
       );
@@ -103,21 +107,22 @@ export const useSubscriptionManager = () => {
     }
   }, [currentAccount, signAndExecuteTransaction]);
 
-  const renewSubscription = useCallback(async (subscriptionId: number): Promise<TransactionResult | null> => {
+  const renewSubscription = useCallback(async (
+    registryId: string,
+    subscriptionId: number
+  ): Promise<TransactionResult | null> => {
     if (!currentAccount) {
       throw new Error('Wallet not connected');
+    }
+
+    if (!registryId) {
+      throw new Error('Registry ID is required');
     }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // Get the registry
-      const registry = await getSubscriptionRegistry();
-      if (!registry) {
-        throw new Error('Subscription registry not found');
-      }
-
       // Get user's coins to use for renewal payment
       const coins = await getUserOwnedCoins(currentAccount.address);
       if (coins.length === 0) {
@@ -128,7 +133,7 @@ export const useSubscriptionManager = () => {
       const coinId = coins[0].coinObjectId;
       
       const transaction = renewSubscriptionTransaction(
-        registry.data.objectId,
+        registryId,
         subscriptionId,
         coinId
       );
@@ -150,23 +155,24 @@ export const useSubscriptionManager = () => {
     }
   }, [currentAccount, signAndExecuteTransaction]);
 
-  const cancelSubscription = useCallback(async (subscriptionId: number): Promise<TransactionResult | null> => {
+  const cancelSubscription = useCallback(async (
+    registryId: string,
+    subscriptionId: number
+  ): Promise<TransactionResult | null> => {
     if (!currentAccount) {
       throw new Error('Wallet not connected');
+    }
+
+    if (!registryId) {
+      throw new Error('Registry ID is required');
     }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // Get the registry
-      const registry = await getSubscriptionRegistry();
-      if (!registry) {
-        throw new Error('Subscription registry not found');
-      }
-
       const transaction = cancelSubscriptionTransaction(
-        registry.data.objectId,
+        registryId,
         subscriptionId
       );
       
@@ -187,11 +193,45 @@ export const useSubscriptionManager = () => {
     }
   }, [currentAccount, signAndExecuteTransaction]);
 
+  const fetchSubscriptionPlans = useCallback(async (registryId: string): Promise<any[]> => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const plans = await getSubscriptionPlans(registryId);
+      return plans;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch subscription plans';
+      setError(errorMessage);
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchUserPlans = useCallback(async (creatorAddress: string): Promise<any[]> => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const plans = await getUserSubscriptionPlans(creatorAddress);
+      return plans;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch user plans';
+      setError(errorMessage);
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   return {
     createPlan,
     subscribe,
     renewSubscription,
     cancelSubscription,
+    fetchSubscriptionPlans,
+    fetchUserPlans,
     isLoading,
     error,
     isConnected: !!currentAccount,

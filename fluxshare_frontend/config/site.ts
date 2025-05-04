@@ -18,6 +18,10 @@ export const siteConfig = {
       href: "/subscription",
     },
     {
+      title: "Browse Plans",
+      href: "/subscription/browse",
+    },
+    {
       title: "Payments",
       href: "/payments",
     },

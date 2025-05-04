@@ -5,38 +5,37 @@ export const PACKAGE_ID = '0x059feebf7bbde97146ab5b2eca6c16602674e23593cfc0732c5
 export const MODULE_NAMES = {
   PAYMENT_SPLITTER: 'payment_splitter',
   SUBSCRIPTION_MANAGER: 'subscription_manager',
-  SUBSCRIPTION_REGISTRY: 'subscription_registry',
+  SUBSCRIPTION_REGISTRY: 'subscription_registry'
 } as const;
 
-// Function names for PaymentSplitter
+// Payment Splitter function names
 export const PAYMENT_SPLITTER_FUNCTIONS = {
-  INITIALIZE: 'initialize',
+  INITIALIZE: 'initialize_registry',
   CREATE_SPLITTER: 'create_splitter',
   PROCESS_PAYMENT: 'process_payment',
   UPDATE_RECIPIENTS: 'update_recipients',
-  GET_SPLITTER: 'get_splitter',
-  GET_ALL_SPLITTERS: 'get_all_splitters',
 } as const;
 
-// Function names for SubscriptionManager
+// Subscription Manager function names  
 export const SUBSCRIPTION_MANAGER_FUNCTIONS = {
-  INITIALIZE: 'initialize',
+  INITIALIZE: 'initialize_registry',
   CREATE_PLAN: 'create_plan',
   SUBSCRIBE: 'subscribe',
   RENEW_SUBSCRIPTION: 'renew_subscription',
   CANCEL_SUBSCRIPTION: 'cancel_subscription',
-  UPDATE_PLAN: 'update_plan',
+} as const;
+
+// Object type names for registry detection
+export const OBJECT_TYPES = {
+  PAYMENT_SPLITTER_REGISTRY: `${PACKAGE_ID}::payment_splitter::PaymentSplitterRegistry`,
+  SUBSCRIPTION_REGISTRY: `${PACKAGE_ID}::subscription_manager::SubscriptionRegistry`,
 } as const;
 
 // Error codes
 export const ERROR_CODES = {
-  UNAUTHORIZED: 0,
-  INVALID_RECIPIENT: 1,
-  INVALID_SHARE: 2,
-  SPLITTER_NOT_FOUND: 3,
-  INSUFFICIENT_FUNDS: 4,
-  SUBSCRIPTION_NOT_FOUND: 1,
-  INVALID_SUBSCRIPTION_PERIOD: 3,
+  INSUFFICIENT_BALANCE: 'INSUFFICIENT_BALANCE',
+  INVALID_RECIPIENT: 'INVALID_RECIPIENT',
+  REGISTRY_NOT_FOUND: 'REGISTRY_NOT_FOUND',
 } as const;
 
 // Network configuration
@@ -47,6 +46,6 @@ export const NETWORKS = {
 
 // Default values
 export const DEFAULTS = {
-  GAS_BUDGET: 10_000_000, // 10 MIOTA for gas
-  MIN_SUBSCRIPTION_PERIOD: 86400, // 1 day in seconds
+  GAS_BUDGET: 10_000_000,
+  DEADLINE: 30,
 } as const; 

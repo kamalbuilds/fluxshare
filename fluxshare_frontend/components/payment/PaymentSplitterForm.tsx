@@ -10,8 +10,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Plus, Trash2, Users, DollarSign, AlertCircle, Database } from 'lucide-react';
 import { usePaymentSplitter } from '@/hooks/usePaymentSplitter';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@iota/dapp-kit';
-import { createPaymentSplitterRegistryTransaction } from '@/lib/iota/client';
+import { createPaymentSplitterRegistryTransaction, getPaymentSplitterRegistry } from '@/lib/iota/client';
 import { useToast } from '@/hooks/use-toast';
+import { getIotaClient } from '@/lib/iota/client';
 
 interface Recipient {
   address: string;
@@ -27,20 +28,67 @@ export const PaymentSplitterForm = () => {
   const [registryId, setRegistryId] = useState<string | null>(null);
   const [needsRegistry, setNeedsRegistry] = useState(false);
   const [isCreatingRegistry, setIsCreatingRegistry] = useState(false);
+  const [isCheckingRegistry, setIsCheckingRegistry] = useState(true);
   
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const { createSplitter, processPayment, isLoading, error, isConnected } = usePaymentSplitter();
   const { toast } = useToast();
 
-  // Check if we need to create a registry
+  // Check for existing registry on mount and account change
   useEffect(() => {
-    if (isConnected) {
-      // In a real app, you'd check if a registry exists
-      // For now, we'll assume we need to create one
-      setNeedsRegistry(true);
-    }
-  }, [isConnected]);
+    const checkRegistryStatus = async () => {
+      if (isConnected && currentAccount) {
+        setIsCheckingRegistry(true);
+        
+        try {
+          // First check blockchain for existing registry
+          const existingRegistryId = await getPaymentSplitterRegistry(currentAccount.address);
+          
+          if (existingRegistryId) {
+            setRegistryId(existingRegistryId);
+            setNeedsRegistry(false);
+            // Also update localStorage for future reference
+            localStorage.setItem(`payment-splitter-registry-${currentAccount.address}`, existingRegistryId);
+          } else {
+            // Check localStorage as backup
+            const storedRegistryId = localStorage.getItem(`payment-splitter-registry-${currentAccount.address}`);
+            if (storedRegistryId) {
+              // Verify the stored ID still exists on blockchain
+              try {
+                const client = getIotaClient();
+                await client.getObject({ id: storedRegistryId });
+                setRegistryId(storedRegistryId);
+                setNeedsRegistry(false);
+              } catch {
+                // Stored registry doesn't exist anymore, clear it
+                localStorage.removeItem(`payment-splitter-registry-${currentAccount.address}`);
+                setNeedsRegistry(true);
+              }
+            } else {
+              setNeedsRegistry(true);
+            }
+          }
+        } catch (error) {
+          console.error('Error checking registry status:', error);
+          // Fall back to localStorage check
+          const storedRegistryId = localStorage.getItem(`payment-splitter-registry-${currentAccount.address}`);
+          if (storedRegistryId) {
+            setRegistryId(storedRegistryId);
+            setNeedsRegistry(false);
+          } else {
+            setNeedsRegistry(true);
+          }
+        } finally {
+          setIsCheckingRegistry(false);
+        }
+      } else {
+        setIsCheckingRegistry(false);
+      }
+    };
+
+    checkRegistryStatus();
+  }, [isConnected, currentAccount]);
 
   const addRecipient = () => {
     setRecipients([...recipients, { address: '', share: 0 }]);
@@ -91,8 +139,13 @@ export const PaymentSplitterForm = () => {
               obj.reference?.objectId
             );
             if (registry) {
-              setRegistryId(registry.reference.objectId);
+              const newRegistryId = registry.reference.objectId;
+              setRegistryId(newRegistryId);
               setNeedsRegistry(false);
+              
+              // Persist registry ID in localStorage
+              localStorage.setItem(`payment-splitter-registry-${currentAccount.address}`, newRegistryId);
+              
               toast({
                 title: 'Success!',
                 description: 'Payment splitter registry created successfully',
@@ -207,6 +260,28 @@ export const PaymentSplitterForm = () => {
               Please connect your IOTA wallet to create a payment splitter.
             </AlertDescription>
           </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isCheckingRegistry) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Create Payment Splitter
+          </CardTitle>
+          <CardDescription>
+            Set up automatic payment distribution among multiple recipients
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-center py-12">
+          <div className="flex items-center justify-center gap-2">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            <span>Checking for existing registries...</span>
+          </div>
         </CardContent>
       </Card>
     );

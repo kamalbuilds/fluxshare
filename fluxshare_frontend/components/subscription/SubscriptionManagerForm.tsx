@@ -16,23 +16,34 @@ import {
   Database, 
   Plus,
   CreditCard,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react';
 import { useSubscriptionManager } from '@/hooks/useSubscriptionManager';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@iota/dapp-kit';
-import { createSubscriptionRegistryTransaction, parseIotaAmount, formatIotaAmount } from '@/lib/iota/client';
+import { createSubscriptionRegistryTransaction, parseIotaAmount, formatIotaAmount, getSubscriptionRegistry, getIotaClient } from '@/lib/iota/client';
 import { useToast } from '@/hooks/use-toast';
+import { SubscriptionPlansList } from './SubscriptionPlansList';
 
 export const SubscriptionManagerForm = () => {
+  // State for subscription creation
   const [planName, setPlanName] = useState('');
   const [planDescription, setPlanDescription] = useState('');
   const [planPrice, setPlanPrice] = useState('');
   const [planPeriod, setPlanPeriod] = useState('30'); // days
   const [subscriptionPlanId, setSubscriptionPlanId] = useState('');
   const [subscriptionAmount, setSubscriptionAmount] = useState('');
+  
+  // State for subscribing to plans
+  const [planId, setPlanId] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  
+  // Registry management
   const [registryId, setRegistryId] = useState<string | null>(null);
   const [needsRegistry, setNeedsRegistry] = useState(false);
   const [isCreatingRegistry, setIsCreatingRegistry] = useState(false);
+  const [isCheckingRegistry, setIsCheckingRegistry] = useState(true);
+  const [activeTab, setActiveTab] = useState('create');
   
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
@@ -47,14 +58,60 @@ export const SubscriptionManagerForm = () => {
   } = useSubscriptionManager();
   const { toast } = useToast();
 
-  // Check if we need to create a registry
+  // Check for existing registry on mount and account change
   useEffect(() => {
-    if (isConnected) {
-      // In a real app, you'd check if a registry exists
-      // For now, we'll assume we need to create one
-      setNeedsRegistry(true);
-    }
-  }, [isConnected]);
+    const checkRegistryStatus = async () => {
+      if (isConnected && currentAccount) {
+        setIsCheckingRegistry(true);
+        
+        try {
+          // First check blockchain for existing registry
+          const existingRegistryId = await getSubscriptionRegistry(currentAccount.address);
+          
+          if (existingRegistryId) {
+            setRegistryId(existingRegistryId);
+            setNeedsRegistry(false);
+            // Also update localStorage for future reference
+            localStorage.setItem(`subscription-registry-${currentAccount.address}`, existingRegistryId);
+          } else {
+            // Check localStorage as backup
+            const storedRegistryId = localStorage.getItem(`subscription-registry-${currentAccount.address}`);
+            if (storedRegistryId) {
+              // Verify the stored ID still exists on blockchain
+              try {
+                const client = getIotaClient();
+                await client.getObject({ id: storedRegistryId });
+                setRegistryId(storedRegistryId);
+                setNeedsRegistry(false);
+              } catch {
+                // Stored registry doesn't exist anymore, clear it
+                localStorage.removeItem(`subscription-registry-${currentAccount.address}`);
+                setNeedsRegistry(true);
+              }
+            } else {
+              setNeedsRegistry(true);
+            }
+          }
+        } catch (error) {
+          console.error('Error checking registry status:', error);
+          // Fall back to localStorage check
+          const storedRegistryId = localStorage.getItem(`subscription-registry-${currentAccount.address}`);
+          if (storedRegistryId) {
+            setRegistryId(storedRegistryId);
+            setNeedsRegistry(false);
+          } else {
+            setNeedsRegistry(true);
+          }
+        } finally {
+          setIsCheckingRegistry(false);
+        }
+      } else {
+        setIsCheckingRegistry(false);
+      }
+    };
+
+    checkRegistryStatus();
+  }, [isConnected, currentAccount]);
 
   const handleCreateRegistry = async () => {
     if (!currentAccount) {
@@ -85,8 +142,13 @@ export const SubscriptionManagerForm = () => {
               obj.reference?.objectId
             );
             if (registry) {
-              setRegistryId(registry.reference.objectId);
+              const newRegistryId = registry.reference.objectId;
+              setRegistryId(newRegistryId);
               setNeedsRegistry(false);
+              
+              // Persist registry ID in localStorage
+              localStorage.setItem(`subscription-registry-${currentAccount.address}`, newRegistryId);
+              
               toast({
                 title: 'Success!',
                 description: 'Subscription registry created successfully',
@@ -165,7 +227,7 @@ export const SubscriptionManagerForm = () => {
         description: planDescription,
         price: priceInSmallestUnit.toString(),
         period_in_seconds: periodInSeconds,
-      });
+      }, registryId);
 
       if (result) {
         toast({
@@ -198,28 +260,26 @@ export const SubscriptionManagerForm = () => {
       return;
     }
 
-    if (!subscriptionPlanId.trim() || !subscriptionAmount.trim()) {
+    if (!registryId) {
+      toast({
+        title: 'No Registry',
+        description: 'Please create a subscription registry first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!planId.trim() || !paymentAmount.trim()) {
       toast({
         title: 'Missing Information',
-        description: 'Please enter plan ID and payment amount',
+        description: 'Please fill in both plan ID and payment amount',
         variant: 'destructive',
       });
       return;
     }
 
-    const planId = parseInt(subscriptionPlanId);
-    const amount = parseFloat(subscriptionAmount);
-
-    if (isNaN(planId) || planId < 0) {
-      toast({
-        title: 'Invalid Plan ID',
-        description: 'Please enter a valid plan ID',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (isNaN(amount) || amount <= 0) {
+    const amountNumber = parseFloat(paymentAmount);
+    if (isNaN(amountNumber) || amountNumber <= 0) {
       toast({
         title: 'Invalid Amount',
         description: 'Please enter a valid payment amount',
@@ -228,8 +288,19 @@ export const SubscriptionManagerForm = () => {
       return;
     }
 
+    const planIdNumber = parseInt(planId);
+    if (isNaN(planIdNumber) || planIdNumber < 0) {
+      toast({
+        title: 'Invalid Plan ID',
+        description: 'Please enter a valid plan ID',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
-      const result = await subscribe(planId, subscriptionAmount);
+      const amountInNanos = parseIotaAmount(paymentAmount);
+      const result = await subscribe(registryId, planIdNumber, amountInNanos.toString());
 
       if (result) {
         toast({
@@ -237,13 +308,14 @@ export const SubscriptionManagerForm = () => {
           description: `Successfully subscribed to plan ${planId}`,
         });
         
-        // Reset form
-        setSubscriptionPlanId('');
-        setSubscriptionAmount('');
+        // Clear form
+        setPlanId('');
+        setPaymentAmount('');
       }
     } catch (err) {
+      console.error('Subscription error:', err);
       toast({
-        title: 'Error',
+        title: 'Subscription Failed',
         description: error || 'Failed to subscribe to plan',
         variant: 'destructive',
       });
@@ -269,6 +341,28 @@ export const SubscriptionManagerForm = () => {
               Please connect your IOTA wallet to manage subscriptions.
             </AlertDescription>
           </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isCheckingRegistry) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Subscription Manager
+          </CardTitle>
+          <CardDescription>
+            Create subscription plans and manage recurring payments
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-center py-12">
+          <div className="flex items-center justify-center gap-2">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            <span>Checking for existing registries...</span>
+          </div>
         </CardContent>
       </Card>
     );
@@ -336,73 +430,71 @@ export const SubscriptionManagerForm = () => {
           </Alert>
         )}
 
-        <Tabs defaultValue="create-plan" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="create-plan">Create Plan</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="create">Create Plan</TabsTrigger>
             <TabsTrigger value="subscribe">Subscribe</TabsTrigger>
+            <TabsTrigger value="browse">Browse Plans</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="create-plan" className="space-y-4">
+          <TabsContent value="create" className="space-y-4">
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="plan-name">Plan Name</Label>
+              <div>
+                <Label htmlFor="planName">Plan Name</Label>
                 <Input
-                  id="plan-name"
+                  id="planName"
                   placeholder="e.g., Premium Plan"
                   value={planName}
                   onChange={(e) => setPlanName(e.target.value)}
-                  disabled={isLoading}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="plan-description">Description</Label>
+              <div>
+                <Label htmlFor="planDescription">Description</Label>
                 <Textarea
-                  id="plan-description"
+                  id="planDescription"
                   placeholder="Describe what this plan offers..."
                   value={planDescription}
                   onChange={(e) => setPlanDescription(e.target.value)}
-                  disabled={isLoading}
                   rows={3}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="plan-price">Price (IOTA)</Label>
+                <div>
+                  <Label htmlFor="planPrice">Price (IOTA)</Label>
                   <Input
-                    id="plan-price"
+                    id="planPrice"
                     type="number"
-                    step="0.000000001"
-                    min="0"
                     placeholder="0.1"
+                    step="0.01"
                     value={planPrice}
                     onChange={(e) => setPlanPrice(e.target.value)}
-                    disabled={isLoading}
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="plan-period">Period (Days)</Label>
+                <div>
+                  <Label htmlFor="planPeriod">Period (Days)</Label>
                   <Input
-                    id="plan-period"
+                    id="planPeriod"
                     type="number"
-                    min="1"
                     placeholder="30"
                     value={planPeriod}
                     onChange={(e) => setPlanPeriod(e.target.value)}
-                    disabled={isLoading}
                   />
                 </div>
               </div>
 
               <Button 
-                onClick={handleCreatePlan}
-                disabled={isLoading || !registryId}
+                onClick={handleCreatePlan} 
+                disabled={isLoading}
                 className="w-full"
               >
                 {isLoading ? (
-                  'Creating Plan...'
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating Plan...
+                  </>
                 ) : (
                   <>
                     <Plus className="h-4 w-4 mr-2" />
@@ -414,41 +506,47 @@ export const SubscriptionManagerForm = () => {
           </TabsContent>
 
           <TabsContent value="subscribe" className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Manual subscription by Plan ID. Try the "Browse Plans" tab for a better experience!
+              </AlertDescription>
+            </Alert>
+            
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="subscription-plan-id">Plan ID</Label>
+              <div>
+                <Label htmlFor="planId">Plan ID</Label>
                 <Input
-                  id="subscription-plan-id"
+                  id="planId"
                   type="number"
-                  min="0"
                   placeholder="0"
-                  value={subscriptionPlanId}
-                  onChange={(e) => setSubscriptionPlanId(e.target.value)}
-                  disabled={isLoading}
+                  value={planId}
+                  onChange={(e) => setPlanId(e.target.value)}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="subscription-amount">Payment Amount (IOTA)</Label>
+              <div>
+                <Label htmlFor="paymentAmount">Payment Amount (IOTA)</Label>
                 <Input
-                  id="subscription-amount"
+                  id="paymentAmount"
                   type="number"
-                  step="0.000000001"
-                  min="0"
                   placeholder="0.1"
-                  value={subscriptionAmount}
-                  onChange={(e) => setSubscriptionAmount(e.target.value)}
-                  disabled={isLoading}
+                  step="0.01"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
                 />
               </div>
 
               <Button 
-                onClick={handleSubscribe}
-                disabled={isLoading || !registryId}
+                onClick={handleSubscribe} 
+                disabled={isLoading}
                 className="w-full"
               >
                 {isLoading ? (
-                  'Processing...'
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Subscribing...
+                  </>
                 ) : (
                   <>
                     <CreditCard className="h-4 w-4 mr-2" />
@@ -457,6 +555,10 @@ export const SubscriptionManagerForm = () => {
                 )}
               </Button>
             </div>
+          </TabsContent>
+
+          <TabsContent value="browse" className="space-y-4">
+            <SubscriptionPlansList registryId={registryId} />
           </TabsContent>
         </Tabs>
 
