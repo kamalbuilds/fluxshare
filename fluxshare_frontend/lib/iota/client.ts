@@ -52,17 +52,22 @@ export const createPaymentSplitterTransaction = (
 
 export const processPaymentTransaction = (
   registryId: string,
-  params: ProcessPaymentParams,
-  coinId: string
+  params: ProcessPaymentParams
 ): Transaction => {
   const tx = new Transaction();
+  
+  // Convert amount to proper BigInt format (IOTA has 9 decimals)
+  const amountInMist = BigInt(Math.floor(parseFloat(params.amount) * 1_000_000_000));
+  
+  // Split coins from gas coin for the payment
+  const paymentCoin = tx.splitCoins(tx.gas, [amountInMist]);
   
   tx.moveCall({
     target: buildTarget(MODULE_NAMES.PAYMENT_SPLITTER, PAYMENT_SPLITTER_FUNCTIONS.PROCESS_PAYMENT),
     arguments: [
       tx.object(registryId),
       tx.pure.u64(params.splitter_id),
-      tx.object(coinId),
+      paymentCoin,
     ],
   });
   
@@ -113,17 +118,22 @@ export const createSubscriptionPlanTransaction = (
 
 export const subscribeTransaction = (
   registryId: string,
-  params: SubscribeParams,
-  coinId: string
+  params: SubscribeParams
 ): Transaction => {
   const tx = new Transaction();
+  
+  // Convert amount to proper BigInt format (IOTA has 9 decimals)
+  const amountInMist = BigInt(Math.floor(parseFloat(params.payment_amount) * 1_000_000_000));
+  
+  // Split coins from gas coin for the payment
+  const paymentCoin = tx.splitCoins(tx.gas, [amountInMist]);
   
   tx.moveCall({
     target: buildTarget(MODULE_NAMES.SUBSCRIPTION_MANAGER, SUBSCRIPTION_MANAGER_FUNCTIONS.SUBSCRIBE),
     arguments: [
       tx.object(registryId),
       tx.pure.u64(params.plan_id),
-      tx.object(coinId),
+      paymentCoin,
     ],
   });
   
@@ -133,16 +143,22 @@ export const subscribeTransaction = (
 export const renewSubscriptionTransaction = (
   registryId: string,
   subscriptionId: number,
-  coinId: string
+  paymentAmount: string
 ): Transaction => {
   const tx = new Transaction();
+  
+  // Convert amount to proper BigInt format (IOTA has 9 decimals)
+  const amountInMist = BigInt(Math.floor(parseFloat(paymentAmount) * 1_000_000_000));
+  
+  // Split coins from gas coin for the payment
+  const paymentCoin = tx.splitCoins(tx.gas, [amountInMist]);
   
   tx.moveCall({
     target: buildTarget(MODULE_NAMES.SUBSCRIPTION_MANAGER, SUBSCRIPTION_MANAGER_FUNCTIONS.RENEW_SUBSCRIPTION),
     arguments: [
       tx.object(registryId),
       tx.pure.u64(subscriptionId),
-      tx.object(coinId),
+      paymentCoin,
     ],
   });
   
@@ -245,6 +261,50 @@ export const parseIotaAmount = (amount: string): bigint => {
   const [integerPart, fractionalPart = ''] = amount.split('.');
   const paddedFractional = fractionalPart.padEnd(9, '0').slice(0, 9);
   return BigInt(integerPart) * BigInt(1_000_000_000) + BigInt(paddedFractional);
+};
+
+// Check if user has sufficient balance for transaction
+export const checkSufficientBalance = async (
+  userAddress: string, 
+  requiredAmount: string
+): Promise<{ hasBalance: boolean; totalBalance: string; message: string }> => {
+  try {
+    const coins = await getUserOwnedCoins(userAddress);
+    
+    if (coins.length === 0) {
+      return {
+        hasBalance: false,
+        totalBalance: '0',
+        message: 'No IOTA coins found in wallet. Please add IOTA to your wallet.'
+      };
+    }
+    
+    // Calculate total balance
+    const totalBalance = coins.reduce((sum, coin) => {
+      return sum + BigInt(coin.balance || '0');
+    }, BigInt(0));
+    
+    const requiredAmountMist = parseIotaAmount(requiredAmount);
+    const gasEstimate = BigInt(10_000_000); // 10M MIST for gas
+    const totalRequired = requiredAmountMist + gasEstimate;
+    
+    const hasBalance = totalBalance >= totalRequired;
+    
+    return {
+      hasBalance,
+      totalBalance: formatIotaAmount(totalBalance),
+      message: hasBalance 
+        ? 'Sufficient balance available'
+        : `Insufficient balance. Required: ${formatIotaAmount(totalRequired)} IOTA, Available: ${formatIotaAmount(totalBalance)} IOTA`
+    };
+  } catch (error) {
+    console.error('Error checking balance:', error);
+    return {
+      hasBalance: false,
+      totalBalance: '0',
+      message: 'Error checking wallet balance'
+    };
+  }
 };
 
 // Transaction history and events

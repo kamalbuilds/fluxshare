@@ -6,7 +6,8 @@ import {
   createPaymentSplitterTransaction, 
   processPaymentTransaction,
   updateRecipientsTransaction,
-  getUserOwnedCoins 
+  getUserOwnedCoins,
+  checkSufficientBalance
 } from '@/lib/iota/client';
 import type { 
   CreateSplitterParams, 
@@ -68,24 +69,31 @@ export const usePaymentSplitter = () => {
       throw new Error('Registry ID is required');
     }
 
+    if (!amount || parseFloat(amount) <= 0) {
+      throw new Error('Invalid payment amount');
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // Get user's coins to use for payment
-      const coins = await getUserOwnedCoins(currentAccount.address);
-      if (coins.length === 0) {
-        throw new Error('No IOTA coins found in wallet');
-      }
-
-      // Use the first available coin
-      const coinId = coins[0].coinObjectId;
+      // Check balance before processing
+      const balanceCheck = await checkSufficientBalance(currentAccount.address, amount);
       
+      if (!balanceCheck.hasBalance) {
+        throw new Error(balanceCheck.message);
+      }
+      
+      console.log('Balance check passed:', balanceCheck.message);
+      
+      // Create transaction using gas coin splitting
       const transaction = processPaymentTransaction(
         registryId,
-        { splitter_id: splitterId, amount },
-        coinId
+        { splitter_id: splitterId, amount }
       );
+      
+      // Set gas budget explicitly to handle larger transactions
+      transaction.setGasBudget(10_000_000); // 10M MIST gas budget
       
       const result = await signAndExecuteTransaction({
         transaction,

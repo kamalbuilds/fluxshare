@@ -16,13 +16,13 @@ export default function Home() {
       description:
         "Create and manage subscription plans with flexible pricing and durations. Set up recurring payments that automatically process at specified intervals.",
       content: (
-        <div className="h-full w-full bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950/50 dark:to-purple-950/50 rounded-xl p-8 flex items-center justify-center">
+        <div className="h-full w-full bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950/50 dark:to-purple-950/50 rounded-xl p-4 flex items-center justify-center">
           <Image 
-            src="/subscription-preview.png" 
-            width={400} 
-            height={300} 
+            src="/subscribe.png" 
+            width={800} 
+            height={600} 
             alt="Subscription Management" 
-            className="rounded-lg shadow-lg object-cover"
+            className="rounded-lg shadow-lg object-contain max-w-full max-h-full"
           />
         </div>
       ),
@@ -32,13 +32,13 @@ export default function Home() {
       description:
         "Distribute funds among multiple recipients automatically based on predefined shares. Perfect for revenue sharing, royalty payments, and team distributions.",
       content: (
-        <div className="h-full w-full bg-gradient-to-br from-blue-100 to-emerald-100 dark:from-blue-950/50 dark:to-emerald-950/50 rounded-xl p-8 flex items-center justify-center">
+        <div className="h-full w-full bg-gradient-to-br from-blue-100 to-emerald-100 dark:from-blue-950/50 dark:to-emerald-950/50 rounded-xl p-4 flex items-center justify-center">
           <Image 
-            src="/payment-split-preview.png" 
-            width={400} 
-            height={300} 
+            src="/payment.png" 
+            width={800} 
+            height={600} 
             alt="Payment Splitting" 
-            className="rounded-lg shadow-lg object-cover"
+            className="rounded-lg shadow-lg object-contain max-w-full max-h-full"
           />
         </div>
       ),
@@ -48,13 +48,13 @@ export default function Home() {
       description:
         "Track payments, subscriptions, and revenue with intuitive analytics. Gain insights into your payment streams and optimize your financial operations.",
       content: (
-        <div className="h-full w-full bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-950/50 dark:to-amber-950/50 rounded-xl p-8 flex items-center justify-center">
+        <div className="h-full w-full bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-950/50 dark:to-amber-950/50 rounded-xl p-4 flex items-center justify-center">
           <Image 
-            src="/analytics-preview.png" 
-            width={400} 
-            height={300} 
+            src="/analytics.png" 
+            width={800} 
+            height={600} 
             alt="Analytics Dashboard" 
-            className="rounded-lg shadow-lg object-cover"
+            className="rounded-lg shadow-lg object-contain max-w-full max-h-full"
           />
         </div>
       ),
@@ -64,13 +64,13 @@ export default function Home() {
       description:
         "Built on IOTA's secure and feeless blockchain technology. Every transaction is fully traceable and immutable, providing complete transparency.",
       content: (
-        <div className="h-full w-full bg-gradient-to-br from-pink-100 to-rose-100 dark:from-pink-950/50 dark:to-rose-950/50 rounded-xl p-8 flex items-center justify-center">
+        <div className="h-full w-full bg-gradient-to-br from-pink-100 to-rose-100 dark:from-pink-950/50 dark:to-rose-950/50 rounded-xl p-4 flex items-center justify-center">
           <Image 
             src="/security-preview.png" 
-            width={400} 
-            height={300} 
+            width={800} 
+            height={600} 
             alt="Blockchain Security" 
-            className="rounded-lg shadow-lg object-cover"
+            className="rounded-lg shadow-lg object-contain max-w-full max-h-full"
           />
         </div>
       ),
@@ -168,7 +168,7 @@ export default function Home() {
               Powerful Features
             </h2>
             <p className="max-w-[900px] text-gray-500 md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed dark:text-gray-400">
-              Our platform provides all the tools you need to manage payments and subscriptions on the blockchain
+              Our platform provides all the tools you need to manage payments and subscriptions on the IOTA blockchain
             </p>
           </div>
           

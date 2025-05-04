@@ -71,24 +71,22 @@ export const useSubscriptionManager = () => {
       throw new Error('Registry ID is required');
     }
 
+    if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
+      throw new Error('Invalid payment amount');
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // Get user's coins to use for subscription payment
-      const coins = await getUserOwnedCoins(currentAccount.address);
-      if (coins.length === 0) {
-        throw new Error('No IOTA coins found in wallet');
-      }
-
-      // Use the first available coin
-      const coinId = coins[0].coinObjectId;
-      
+      // Create transaction using gas coin splitting
       const transaction = subscribeTransaction(
         registryId,
-        { plan_id: planId, payment_amount: paymentAmount },
-        coinId
+        { plan_id: planId, payment_amount: paymentAmount }
       );
+      
+      // Set gas budget explicitly
+      transaction.setGasBudget(10_000_000); // 10M MIST gas budget
       
       const result = await signAndExecuteTransaction({
         transaction,
@@ -109,7 +107,8 @@ export const useSubscriptionManager = () => {
 
   const renewSubscription = useCallback(async (
     registryId: string,
-    subscriptionId: number
+    subscriptionId: number,
+    paymentAmount: string
   ): Promise<TransactionResult | null> => {
     if (!currentAccount) {
       throw new Error('Wallet not connected');
@@ -119,24 +118,23 @@ export const useSubscriptionManager = () => {
       throw new Error('Registry ID is required');
     }
 
+    if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
+      throw new Error('Invalid payment amount');
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // Get user's coins to use for renewal payment
-      const coins = await getUserOwnedCoins(currentAccount.address);
-      if (coins.length === 0) {
-        throw new Error('No IOTA coins found in wallet');
-      }
-
-      // Use the first available coin
-      const coinId = coins[0].coinObjectId;
-      
+      // Create transaction using gas coin splitting
       const transaction = renewSubscriptionTransaction(
         registryId,
         subscriptionId,
-        coinId
+        paymentAmount
       );
+      
+      // Set gas budget explicitly
+      transaction.setGasBudget(10_000_000); // 10M MIST gas budget
       
       const result = await signAndExecuteTransaction({
         transaction,
