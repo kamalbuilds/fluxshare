@@ -1,9 +1,9 @@
 import * as React from "react"
 import Link from "next/link"
 
-import { NavItem } from "@/fluxshare_frontend/types/nav"
-import { siteConfig } from "@/fluxshare_frontend/config/site"
-import { cn } from "@/fluxshare_frontend/lib/utils"
+import { NavItem } from "@/types/nav"
+import { siteConfig } from "@/config/site"
+import { cn } from "@/lib/utils"
 import { Icons } from "@/components/icons"
 
 

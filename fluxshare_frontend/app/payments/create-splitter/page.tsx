@@ -1,11 +1,11 @@
 "use client";
 import React from "react";
 import Link from "next/link";
+import { Metadata } from "next";
 
-import { PaymentSplitterForm } from "@/components/payment/payment-splitter-form";
+import { PaymentSplitterForm } from "@/components/payment/PaymentSplitterForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ConnectButton } from "@iota/dapp-kit";
 
 export default function CreateSplitterPage() {
   return (
@@ -15,19 +15,11 @@ export default function CreateSplitterPage() {
           <h1 className="text-3xl font-bold">Create Revenue Sharing Plan</h1>
           <p className="text-gray-500">Set up automatic distribution of funds among team members, collaborators, or stakeholders</p>
         </div>
-        <ConnectButton />
       </div>
       
       <div className="grid gap-8 md:grid-cols-3">
         <div className="md:col-span-2">
-          <PaymentSplitterForm 
-            walletAddress={null} 
-            kioskId={null} 
-            onSuccess={() => {
-              // Navigate to dashboard or show success message
-              console.log('Revenue sharing plan created successfully');
-            }}
-          />
+          <PaymentSplitterForm />
         </div>
         
         <div>

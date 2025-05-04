@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     let results = [];
     for(let i = 0; i < 10; i++) {
       const result = await requestIotaFromFaucetV1({
-        host: getFaucetHost('testnet'),
+        host: getFaucetHost('devnet'),
         recipient: address,
       });
       results.push(result);

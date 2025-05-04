@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ConnectButton } from "@iota/dapp-kit";
 
 export default function CreateSubscriptionPage() {
   return (
@@ -17,7 +16,6 @@ export default function CreateSubscriptionPage() {
           <h1 className="text-3xl font-bold">Create Subscription Plan</h1>
           <p className="text-gray-500">Set up a new subscription offering for your customers</p>
         </div>
-        <ConnectButton />
       </div>
       
       <div className="grid gap-8 md:grid-cols-3">

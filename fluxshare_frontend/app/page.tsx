@@ -83,31 +83,37 @@ export default function Home() {
       title: "Content Creators",
       description: "Automate revenue sharing between creators, platforms, and collaborators.",
       icon: "👨‍🎨",
+      link: "/dashboard",
     },
     {
       title: "SaaS Businesses",
       description: "Set up subscription plans with flexible pricing and automatic billing.",
       icon: "💻",
+      link: "/subscription",
     },
     {
       title: "Freelancers",
       description: "Split project payments among team members with predefined shares.",
       icon: "👩‍💻",
+      link: "/payments",
     },
     {
       title: "Digital Services",
       description: "Implement pay-as-you-go models with transparent payment processing.",
       icon: "🛠",
+      link: "/dashboard",
     },
     {
       title: "NFT Marketplaces",
       description: "Manage royalty distributions for NFT sales and resales.",
       icon: "🖼",
+      link: "/payments",
     },
     {
       title: "DAOs & Communities",
       description: "Distribute funds among community members based on contribution.",
       icon: "🤝",
+      link: "/dashboard",
     },
   ];
   

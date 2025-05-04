@@ -1,11 +1,11 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { ConnectButton } from "@iota/dapp-kit";
 
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { ConnectButton } from "@iota/dapp-kit";
 
 export default function PaymentsPage() {
   return (
@@ -15,7 +15,6 @@ export default function PaymentsPage() {
           <h1 className="text-3xl font-bold">Payment Management</h1>
           <p className="text-gray-500">Manage payment splitting and track your payment history</p>
         </div>
-        <ConnectButton />
       </div>
 
       <Tabs defaultValue="revenue-sharing" className="w-full">

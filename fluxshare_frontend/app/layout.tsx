@@ -2,15 +2,15 @@
 import "@/styles/globals.css"
 import { Metadata } from "next"
 
-import { siteConfig } from "@/fluxshare_frontend/config/site"
-import { fontSans } from "@/fluxshare_frontend/lib/fonts"
-import { cn } from "@/fluxshare_frontend/lib/utils"
+import { siteConfig } from "@/config/site"
+import { fontSans } from "@/lib/fonts"
+import { cn } from "@/lib/utils"
 import { SiteHeader } from "@/components/site-header"
 import { TailwindIndicator } from "@/components/tailwind-indicator"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 
-import { createNetworkConfig, IotaClientProvider, WalletProvider, IOTAProvider } from '@iota/dapp-kit';
+import { createNetworkConfig, IotaClientProvider, WalletProvider } from '@iota/dapp-kit';
 import { getFullnodeUrl } from '@iota/iota-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '@iota/dapp-kit/dist/index.css';
@@ -25,10 +25,10 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
 
   const { networkConfig } = createNetworkConfig({
-    localnet: { url: getFullnodeUrl('localnet') },
     testnet: { url: getFullnodeUrl('testnet') },
-});
-const queryClient = new QueryClient();
+    devnet: { url: getFullnodeUrl('devnet') },
+  });
+  const queryClient = new QueryClient();
 
   return (
     <>
@@ -41,26 +41,25 @@ const queryClient = new QueryClient();
             inter.className
           )}
         >
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <QueryClientProvider client={queryClient}>
-          <IotaClientProvider
-            networkId="testnet"
-            endpoints={{
-              jsonRpc: 'https://api.testnet.iota.cafe',
-              graphql: 'https://graphql.testnet.iota.cafe',
-            }}
-          >
+            <IotaClientProvider networks={networkConfig} defaultNetwork="devnet">
               <WalletProvider>
-            <div className="relative flex min-h-screen flex-col">
-              <SiteHeader />
-              <div className="flex-1">{children}</div>
-            </div>
-            <TailwindIndicator />
-            <Toaster />
-            </WalletProvider>
+                <ThemeProvider
+                  attribute="class"
+                  defaultTheme="system"
+                  enableSystem
+                  disableTransitionOnChange
+                >
+                  <div className="relative flex min-h-screen flex-col">
+                    <SiteHeader />
+                    <div className="flex-1">{children}</div>
+                  </div>
+                  <TailwindIndicator />
+                  <Toaster />
+                </ThemeProvider>
+              </WalletProvider>
             </IotaClientProvider>
-            </QueryClientProvider>
-          </ThemeProvider>
+          </QueryClientProvider>
         </body>
       </html>
     </>

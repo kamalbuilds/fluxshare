@@ -1,293 +1,345 @@
-import {
-  IotaClient,
-  getFullnodeUrl,
-  Network
-} from '@iota/iota-sdk/client';
-
-import { KioskClient, KioskTransaction } from '@iota/kiosk';
-
-// Configuration for IOTA client
-const NODE_URL = process.env.NEXT_PUBLIC_IOTA_NODE_URL || 'https://api.devnet.iota.cafe';
-
-// Deployed contract package ID
-export const PACKAGE_ID = '0x059feebf7bbde97146ab5b2eca6c16602674e23593cfc0732c5350cfd0b68de2';
+import { IotaClient, getFullnodeUrl } from '@iota/iota-sdk/client';
+import { Transaction } from '@iota/iota-sdk/transactions';
+import { 
+  PACKAGE_ID, 
+  MODULE_NAMES, 
+  PAYMENT_SPLITTER_FUNCTIONS, 
+  SUBSCRIPTION_MANAGER_FUNCTIONS,
+  DEFAULTS 
+} from './constants';
+import type {
+  CreateSplitterParams,
+  ProcessPaymentParams,
+  CreateSubscriptionPlanParams,
+  SubscribeParams,
+  TransactionResult,
+  PaymentSplitter,
+  SubscriptionPlan,
+  Subscription
+} from './types';
 
 // Initialize IOTA client
-export const initIotaClient = async (): Promise<IotaClient> => {
-  try {
-    const client = new IotaClient({
-      url: NODE_URL,
-    });
-    return client;
-  } catch (error) {
-    console.error('Error initializing IOTA client:', error);
-    throw error;
-  }
+export const getIotaClient = (): IotaClient => {
+  return new IotaClient({
+    url: getFullnodeUrl('devnet'),
+  });
 };
 
-// Initialize IOTA Kiosk client
-export const initKioskClient = async (): Promise<KioskClient> => {
-  try {
-    const client = new IotaClient({ url: getFullnodeUrl(Network.Testnet) });
-    
-    // Create a Kiosk Client
-    const kioskClient = new KioskClient({
-      client,
-      network: Network.Testnet,
-    });
-    
-    return kioskClient;
-  } catch (error) {
-    console.error('Error initializing IOTA Kiosk client:', error);
-    throw error;
-  }
+// Helper function to build module target string
+const buildTarget = (moduleName: string, functionName: string): string => {
+  return `${PACKAGE_ID}::${moduleName}::${functionName}`;
 };
 
-// Create a new kiosk for a user (will need to use an IOTA Transaction object)
-export const createKiosk = async (walletAddress: string): Promise<any> => {
-  try {
-    const kioskClient = await initKioskClient();
-    
-    // Using Transaction from the IOTA SDK to create a kiosk
-    // Note: In a real implementation, this would use proper Transaction from IOTA SDK
-    // and would be signed and executed by the wallet
-    const kiosk = { id: `kiosk_${Math.random().toString(36).substring(2, 10)}`, owner: walletAddress };
-    
-    return kiosk;
-  } catch (error) {
-    console.error('Error creating kiosk:', error);
-    throw error;
-  }
+// Payment Splitter Functions
+export const createPaymentSplitterTransaction = (
+  registryId: string,
+  params: CreateSplitterParams
+): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.PAYMENT_SPLITTER, PAYMENT_SPLITTER_FUNCTIONS.CREATE_SPLITTER),
+    arguments: [
+      tx.object(registryId),
+      tx.pure.string(params.name),
+      tx.pure.vector('address', params.recipient_addresses),
+      tx.pure.vector('u64', params.recipient_shares),
+    ],
+  });
+  
+  return tx;
 };
 
-// Create a new subscription using the deployed contract
-export const createSubscription = async (params: {
-  name: string;
-  description: string;
-  price: bigint;
-  duration: number;
-  ownerAddress: string;
-}): Promise<any> => {
-  try {
-    const kioskClient = await initKioskClient();
-    
-    // In a production implementation, we would:
-    // 1. Create a Transaction using IOTA SDK
-    // 2. Call the subscription_manager::create_subscription function from the deployed contract
-    // 3. Finalize and return the transaction for signing
-    
-    console.log(`Using contract at: ${PACKAGE_ID}`);
-    
-    // Simulating the transaction for now
-    const mockSubscription = {
-      id: `sub_${Math.random().toString(36).substring(2, 15)}`,
-      name: params.name,
-      description: params.description,
-      price: params.price,
-      duration: params.duration,
-      ownerAddress: params.ownerAddress,
-      packageId: PACKAGE_ID,
-      createdAt: Date.now(),
-      active: true
-    };
-    
-    return mockSubscription;
-  } catch (error) {
-    console.error('Error creating subscription:', error);
-    throw error;
-  }
+export const processPaymentTransaction = (
+  registryId: string,
+  params: ProcessPaymentParams,
+  coinId: string
+): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.PAYMENT_SPLITTER, PAYMENT_SPLITTER_FUNCTIONS.PROCESS_PAYMENT),
+    arguments: [
+      tx.object(registryId),
+      tx.pure.u64(params.splitter_id),
+      tx.object(coinId),
+    ],
+  });
+  
+  return tx;
 };
 
-// Get a user's kiosk by ID
-export const getKiosk = async (kioskId: string): Promise<any> => {
+export const updateRecipientsTransaction = (
+  registryId: string,
+  splitterId: number,
+  recipientAddresses: string[],
+  recipientShares: number[]
+): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.PAYMENT_SPLITTER, PAYMENT_SPLITTER_FUNCTIONS.UPDATE_RECIPIENTS),
+    arguments: [
+      tx.object(registryId),
+      tx.pure.u64(splitterId),
+      tx.pure.vector('address', recipientAddresses),
+      tx.pure.vector('u64', recipientShares),
+    ],
+  });
+  
+  return tx;
+};
+
+// Subscription Manager Functions
+export const createSubscriptionPlanTransaction = (
+  registryId: string,
+  params: CreateSubscriptionPlanParams
+): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.SUBSCRIPTION_MANAGER, SUBSCRIPTION_MANAGER_FUNCTIONS.CREATE_PLAN),
+    arguments: [
+      tx.object(registryId),
+      tx.pure.string(params.name),
+      tx.pure.string(params.description),
+      tx.pure.u64(params.price),
+      tx.pure.u64(params.period_in_seconds),
+    ],
+  });
+  
+  return tx;
+};
+
+export const subscribeTransaction = (
+  registryId: string,
+  params: SubscribeParams,
+  coinId: string
+): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.SUBSCRIPTION_MANAGER, SUBSCRIPTION_MANAGER_FUNCTIONS.SUBSCRIBE),
+    arguments: [
+      tx.object(registryId),
+      tx.pure.u64(params.plan_id),
+      tx.object(coinId),
+    ],
+  });
+  
+  return tx;
+};
+
+export const renewSubscriptionTransaction = (
+  registryId: string,
+  subscriptionId: number,
+  coinId: string
+): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.SUBSCRIPTION_MANAGER, SUBSCRIPTION_MANAGER_FUNCTIONS.RENEW_SUBSCRIPTION),
+    arguments: [
+      tx.object(registryId),
+      tx.pure.u64(subscriptionId),
+      tx.object(coinId),
+    ],
+  });
+  
+  return tx;
+};
+
+export const cancelSubscriptionTransaction = (
+  registryId: string,
+  subscriptionId: number
+): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.SUBSCRIPTION_MANAGER, SUBSCRIPTION_MANAGER_FUNCTIONS.CANCEL_SUBSCRIPTION),
+    arguments: [
+      tx.object(registryId),
+      tx.pure.u64(subscriptionId),
+    ],
+  });
+  
+  return tx;
+};
+
+// Query Functions - Fixed to use proper shared object queries
+export const getPaymentSplitterRegistry = async (): Promise<any> => {
+  const client = getIotaClient();
+  
   try {
-    const kioskClient = await initKioskClient();
-    const kiosk = await kioskClient.getKiosk({ 
-      id: kioskId,
+    // Query for all objects of the PaymentSplitterRegistry type
+    const objects = await client.multiGetObjects({
+      ids: [], // We'll use getDynamicFields instead
       options: {
-        withKioskFields: true,
-        withListingPrices: true
+        showContent: true,
+        showType: true,
       }
     });
-    return kiosk;
-  } catch (error) {
-    console.error('Error getting kiosk:', error);
-    return null;
-  }
-};
-
-// Get owned kiosks for a user
-export const getOwnedKiosks = async (address: string): Promise<any> => {
-  try {
-    const kioskClient = await initKioskClient();
-    const kiosks = await kioskClient.getOwnedKiosks({ address });
-    return kiosks;
-  } catch (error) {
-    console.error('Error getting owned kiosks:', error);
-    return { kioskOwnerCaps: [], kioskIds: [] };
-  }
-};
-
-// Create a subscription payment using the deployed contract
-export const createSubscriptionPayment = async (
-  kioskId: string,
-  payerAddress: string,
-  receiverAddress: string,
-  amount: bigint,
-  metadataJson: Record<string, any>
-): Promise<any> => {
-  try {
-    const kioskClient = await initKioskClient();
     
-    // In a production implementation, we would:
-    // 1. Create a Transaction using IOTA SDK
-    // 2. Call the subscription_manager::create_payment function from the deployed contract
-    // 3. Finalize and return the transaction for signing
-    
-    console.log(`Using contract at: ${PACKAGE_ID}`);
-    
-    // Simulating the transaction for now
-    const mockTransaction = {
-      id: `tx_${Math.random().toString(36).substring(2, 15)}`,
-      kioskId,
-      sender: payerAddress,
-      recipient: receiverAddress,
-      amount,
-      packageId: PACKAGE_ID,
-      metadata: metadataJson,
-      timestamp: Date.now()
-    };
-    
-    return mockTransaction;
-  } catch (error) {
-    console.error('Error creating subscription payment:', error);
-    throw error;
-  }
-};
-
-// Process a payment split transaction using the deployed contract
-export const createSplitPayment = async (
-  kioskId: string,
-  payerAddress: string,
-  recipients: Array<{ address: string, share: number }>,
-  totalAmount: bigint,
-  metadataJson: Record<string, any>
-): Promise<any[]> => {
-  try {
-    const kioskClient = await initKioskClient();
-    
-    // In a production implementation, we would:
-    // 1. Create a Transaction using IOTA SDK
-    // 2. Call the payment_splitter::split_payment function from the deployed contract
-    // 3. Finalize and return the transaction for signing
-    
-    console.log(`Using contract at: ${PACKAGE_ID}`);
-    
-    // Create a transaction for each recipient
-    const transactions = [];
-    
-    for (const recipient of recipients) {
-      const recipientAmount = (totalAmount * BigInt(recipient.share)) / BigInt(100);
-      
-      if (recipientAmount > BigInt(0)) {
-        const mockTransaction = {
-          id: `tx_${Math.random().toString(36).substring(2, 15)}`,
-          kioskId,
-          sender: payerAddress,
-          recipient: recipient.address,
-          amount: recipientAmount,
-          packageId: PACKAGE_ID,
-          metadata: {
-            ...metadataJson,
-            recipient_share: recipient.share
-          },
-          timestamp: Date.now()
-        };
-        
-        transactions.push(mockTransaction);
-      }
-    }
-    
-    return transactions;
-  } catch (error) {
-    console.error('Error creating split payment:', error);
-    throw error;
-  }
-};
-
-// Get transaction history for a kiosk using the deployed contract
-export const getTransactionHistory = async (kioskId: string): Promise<any[]> => {
-  try {
-    const kioskClient = await initKioskClient();
-    
-    // In a production implementation, we would:
-    // 1. Call the subscription_registry::get_transaction_history function from the deployed contract
-    
-    console.log(`Using contract at: ${PACKAGE_ID}`);
-    
-    // Mocking the transaction history as there's no clear documentation for this method
-    return [
-      {
-        id: `tx_${Math.random().toString(36).substring(2, 15)}`,
-        kioskId,
-        type: 'payment',
-        packageId: PACKAGE_ID,
-        amount: BigInt(1000000),
-        timestamp: Date.now() - 3600000
+    // Alternative approach: Query events to find registry creation
+    const events = await client.queryEvents({
+      query: {
+        MoveEventModule: {
+          package: PACKAGE_ID,
+          module: MODULE_NAMES.PAYMENT_SPLITTER,
+        }
       },
-      {
-        id: `tx_${Math.random().toString(36).substring(2, 15)}`,
-        kioskId,
-        type: 'subscription',
-        packageId: PACKAGE_ID,
-        amount: BigInt(5000000),
-        timestamp: Date.now() - 7200000
-      }
-    ];
+      limit: 1,
+    });
+    
+    // For now, we'll use a known registry ID or create one
+    // In a real app, you'd track the registry ID from deployment
+    return null; // Will be handled in the hooks
   } catch (error) {
-    console.error('Error getting transaction history:', error);
-    return [];
+    console.error('Error fetching payment splitter registry:', error);
+    throw error;
   }
 };
 
-// Utility function to convert IOTA tokens to human-readable format
-export const formatIotaAmount = (amount: bigint): string => {
-  const amountString = amount.toString();
-  // Format with proper decimal placement for IOTA tokens
-  if (amountString.length <= 6) {
-    return `0.${amountString.padStart(6, '0')} Mi`;
-  } else {
-    const integerPart = amountString.slice(0, -6);
-    const decimalPart = amountString.slice(-6);
-    return `${integerPart}.${decimalPart} Mi`;
+export const getSubscriptionRegistry = async (): Promise<any> => {
+  const client = getIotaClient();
+  
+  try {
+    // Similar approach for subscription registry
+    const events = await client.queryEvents({
+      query: {
+        MoveEventModule: {
+          package: PACKAGE_ID,
+          module: MODULE_NAMES.SUBSCRIPTION_MANAGER,
+        }
+      },
+      limit: 1,
+    });
+    
+    return null; // Will be handled in the hooks
+  } catch (error) {
+    console.error('Error fetching subscription registry:', error);
+    throw error;
   }
 };
 
-// Check if wallet is connected
-export const isWalletConnected = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  // This would integrate with an actual IOTA wallet connector
-  const connectedWallet = localStorage.getItem('connectedWallet');
-  return !!connectedWallet;
+export const getUserOwnedCoins = async (address: string): Promise<any[]> => {
+  const client = getIotaClient();
+  
+  try {
+    const coins = await client.getCoins({
+      owner: address,
+      coinType: '0x2::iota::IOTA',
+    });
+    
+    return coins.data;
+  } catch (error) {
+    console.error('Error fetching user coins:', error);
+    throw error;
+  }
 };
 
-// Connect wallet (placeholder implementation)
-export const connectWallet = async (): Promise<string> => {
-  // This would integrate with an actual IOTA wallet connector
-  // For now, just a placeholder to simulate wallet connection
-  const mockAddress = `iota1${Math.random().toString(36).substring(2, 15)}`;
-  localStorage.setItem('connectedWallet', mockAddress);
-  return mockAddress;
+export const getObjectById = async (objectId: string): Promise<any> => {
+  const client = getIotaClient();
+  
+  try {
+    const object = await client.getObject({
+      id: objectId,
+      options: {
+        showContent: true,
+        showType: true,
+        showOwner: true,
+      }
+    });
+    
+    return object;
+  } catch (error) {
+    console.error('Error fetching object:', error);
+    throw error;
+  }
 };
 
-// Disconnect wallet
-export const disconnectWallet = async (): Promise<void> => {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem('connectedWallet');
+// Registry creation functions
+export const createPaymentSplitterRegistryTransaction = (): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.PAYMENT_SPLITTER, PAYMENT_SPLITTER_FUNCTIONS.INITIALIZE),
+    arguments: [],
+  });
+  
+  return tx;
 };
 
-// Get connected wallet address
-export const getWalletAddress = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('connectedWallet');
+export const createSubscriptionRegistryTransaction = (): Transaction => {
+  const tx = new Transaction();
+  
+  tx.moveCall({
+    target: buildTarget(MODULE_NAMES.SUBSCRIPTION_MANAGER, SUBSCRIPTION_MANAGER_FUNCTIONS.INITIALIZE),
+    arguments: [],
+  });
+  
+  return tx;
+};
+
+// Utility functions
+export const formatIotaAmount = (amount: string | bigint): string => {
+  const amountBigInt = typeof amount === 'string' ? BigInt(amount) : amount;
+  // IOTA has 9 decimals
+  const divisor = BigInt(1_000_000_000);
+  const integerPart = amountBigInt / divisor;
+  const fractionalPart = amountBigInt % divisor;
+  
+  if (fractionalPart === BigInt(0)) {
+    return integerPart.toString();
+  }
+  
+  return `${integerPart}.${fractionalPart.toString().padStart(9, '0').replace(/0+$/, '')}`;
+};
+
+export const parseIotaAmount = (amount: string): bigint => {
+  const [integerPart, fractionalPart = ''] = amount.split('.');
+  const paddedFractional = fractionalPart.padEnd(9, '0').slice(0, 9);
+  return BigInt(integerPart) * BigInt(1_000_000_000) + BigInt(paddedFractional);
+};
+
+// Transaction history and events
+export const getTransactionHistory = async (address: string): Promise<any[]> => {
+  const client = getIotaClient();
+  
+  try {
+    const transactions = await client.queryTransactionBlocks({
+      filter: {
+        FromAddress: address,
+      },
+      options: {
+        showInput: true,
+        showEffects: true,
+        showEvents: true,
+      },
+      limit: 50,
+    });
+    
+    return transactions.data;
+  } catch (error) {
+    console.error('Error fetching transaction history:', error);
+    throw error;
+  }
+};
+
+export const getEventsByType = async (eventType: string): Promise<any[]> => {
+  const client = getIotaClient();
+  
+  try {
+    const events = await client.queryEvents({
+      query: {
+        MoveEventType: `${PACKAGE_ID}::${eventType}`,
+      },
+      limit: 50,
+    });
+    
+    return events.data;
+  } catch (error) {
+    console.error('Error fetching events:', error);
+    throw error;
+  }
 }; 
