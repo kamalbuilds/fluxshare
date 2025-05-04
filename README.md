@@ -38,6 +38,8 @@ FluxShare leverages IOTA's feeless blockchain to automate multi-party payments a
 - **IOTA Blockchain Integration**: Leverage IOTA's secure, feeless transaction infrastructure
 - **Programmable Payment Logic**: Create custom rules for different payment scenarios
 
+## Demo Video 
+
 ## Deployed Smart Contracts
 
 Our smart contracts have been successfully deployed to the IOTA blockchain:
