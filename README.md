@@ -53,7 +53,7 @@ Our smart contracts have been successfully deployed to the IOTA blockchain:
 - **Network**: IOTA Testnet
 - **Deployment Date**: May 2025
 
-## Getting Started
+## Getting Started\
 
 ### Prerequisites
 

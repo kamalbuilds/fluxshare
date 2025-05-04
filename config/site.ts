@@ -28,7 +28,7 @@ export const siteConfig = {
   ],
   links: {
     twitter: "https://x.com/kamalbuilds",
-    github: "https://github.com/kamalbuilds/iota-defi",
+    github: "https://github.com/kamalbuilds/fluxshare",
     docs: "https://docs.iota.org/",
   },
 }
